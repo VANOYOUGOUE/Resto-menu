@@ -6,6 +6,8 @@ import {
   getMenuItems, 
   createMVPOrder, 
   createServiceRequest, 
+  getMVPTableById,
+  getMVPRestaurantById,
   MenuItem,
   formatFCFA
 } from '@/lib/mvp-db';
@@ -43,6 +45,11 @@ export default function ClientMenuPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Table/Restaurant resolution details
+  const [tableNumber, setTableNumber] = useState('');
+  const [restaurantName, setRestaurantName] = useState('');
+  const [restaurantId, setRestaurantId] = useState('');
+
   // Cart state
   const [cart, setCart] = useState<CartItem[]>([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
@@ -53,9 +60,22 @@ export default function ClientMenuPage() {
   const [toast, setToast] = useState<{ text: string; type: 'success' | 'info' | 'error' } | null>(null);
 
   useEffect(() => {
-    async function loadMenu() {
+    async function loadTableAndMenu() {
       try {
-        const items = await getMenuItems();
+        const tableObj = await getMVPTableById(tableId);
+        if (!tableObj) {
+          setError("Table introuvable. Veuillez flasher de nouveau le QR code.");
+          setLoading(false);
+          return;
+        }
+
+        setTableNumber(tableObj.table_number);
+        setRestaurantId(tableObj.restaurant_id);
+
+        const restaurantObj = await getMVPRestaurantById(tableObj.restaurant_id);
+        setRestaurantName(restaurantObj?.name || 'Notre Restaurant');
+
+        const items = await getMenuItems(tableObj.restaurant_id);
         setMenuItems(items);
         
         // Extraire les catégories uniques
@@ -71,8 +91,8 @@ export default function ClientMenuPage() {
         setLoading(false);
       }
     }
-    loadMenu();
-  }, []);
+    loadTableAndMenu();
+  }, [tableId]);
 
   const showToast = (text: string, type: 'success' | 'info' | 'error' = 'success') => {
     setToast({ text, type });
@@ -127,7 +147,7 @@ export default function ClientMenuPage() {
   // Call Server/Waiter Handler
   const handleServiceRequest = async (type: 'waiter' | 'bill') => {
     try {
-      const res = await createServiceRequest(tableId, type);
+      const res = await createServiceRequest(tableId, type, restaurantId);
       if (res) {
         showToast(
           type === 'bill' 
@@ -154,7 +174,7 @@ export default function ClientMenuPage() {
         quantity: i.quantity
       }));
       
-      const result = await createMVPOrder(tableId, itemsInput);
+      const result = await createMVPOrder(tableId, itemsInput, restaurantId);
       if (result) {
         // Confettis de succès
         confetti({
@@ -241,14 +261,14 @@ export default function ClientMenuPage() {
               <Sparkles size={10} />
               <span>Commande en ligne</span>
             </div>
-            <h1 className="text-2xl font-black tracking-tight text-white">Le Bistro Premium</h1>
+            <h1 className="text-2xl font-black tracking-tight text-white">{restaurantName}</h1>
             <p className="text-slate-400 text-xs mt-1">Prise de commande rapide & autonome</p>
           </div>
           
           <div className="flex flex-col items-end">
             <span className="text-xs text-slate-500 uppercase tracking-widest font-mono">Table</span>
             <span className="text-2xl font-black text-amber-500 bg-amber-500/10 border border-amber-500/30 px-3.5 py-1 rounded-2xl shadow-inner font-mono">
-              {tableId}
+              {tableNumber}
             </span>
           </div>
         </div>

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useRef, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { 
   getMVPOrders, 
   updateMVPOrderStatus, 
@@ -8,8 +9,11 @@ import {
   resolveServiceRequest, 
   subscribeToMVPOrders, 
   subscribeToMVPServiceRequests,
+  getCurrentSession,
+  logoutMVPUser,
   Order, 
-  ServiceRequest 
+  ServiceRequest,
+  RestaurantUser
 } from '@/lib/mvp-db';
 import { 
   ChefHat, 
@@ -18,27 +22,39 @@ import {
   Volume2, 
   VolumeX, 
   Clock, 
-  CheckCheck,
-  RotateCcw,
-  Sparkles,
-  Receipt,
-  UtensilsCrossed,
-  Archive
+  CheckCheck, 
+  RotateCcw, 
+  Sparkles, 
+  Receipt, 
+  UtensilsCrossed, 
+  Archive,
+  LogOut
 } from 'lucide-react';
 
 export default function KitchenDashboard() {
+  const router = useRouter();
+  const [session, setSession] = useState<{ user: RestaurantUser; restaurant: any } | null>(null);
+  const [loadingSession, setLoadingSession] = useState(true);
+
   const [orders, setOrders] = useState<Order[]>([]);
   const [serviceRequests, setServiceRequests] = useState<ServiceRequest[]>([]);
   const [soundEnabled, setSoundEnabled] = useState(false);
   const [loading, setLoading] = useState(true);
   
-  // Archiver localement les commandes terminées
   const [archivedOrderIds, setArchivedOrderIds] = useState<string[]>([]);
-
-  // Pour éviter de jouer le son de notification au premier chargement
   const isInitialized = useRef(false);
 
-  // Synthétiseur audio (Web Audio API)
+  // Guard checking
+  useEffect(() => {
+    const activeSession = getCurrentSession();
+    if (!activeSession) {
+      router.push('/login?redirect=/kitchen');
+    } else {
+      setSession(activeSession);
+      setLoadingSession(false);
+    }
+  }, [router]);
+
   const playAlertSound = useCallback(() => {
     if (!soundEnabled) return;
     try {
@@ -65,7 +81,6 @@ export default function KitchenDashboard() {
         osc.stop(audioCtx.currentTime + delay + 0.8);
       };
 
-      // Double note clochette d'or (A5 -> C6)
       playDing(0, 880);
       playDing(0.12, 1046.5);
     } catch (e) {
@@ -74,10 +89,14 @@ export default function KitchenDashboard() {
   }, [soundEnabled]);
 
   const loadData = useCallback(async () => {
+    const activeSession = getCurrentSession();
+    if (!activeSession) return;
+    const restId = activeSession.restaurant.id;
+
     try {
       const [fetchedOrders, fetchedRequests] = await Promise.all([
-        getMVPOrders(),
-        getMVPServiceRequests()
+        getMVPOrders(restId),
+        getMVPServiceRequests(restId)
       ]);
       setOrders(fetchedOrders);
       setServiceRequests(fetchedRequests);
@@ -89,9 +108,11 @@ export default function KitchenDashboard() {
   }, []);
 
   useEffect(() => {
+    if (loadingSession || !session) return;
+    const restId = session.restaurant.id;
+
     loadData();
 
-    // S'abonner aux commandes en temps réel
     const unsubOrders = subscribeToMVPOrders((payload) => {
       if (payload.eventType === 'INSERT') {
         setOrders(prev => [payload.new, ...prev]);
@@ -101,9 +122,8 @@ export default function KitchenDashboard() {
       } else {
         loadData();
       }
-    });
+    }, restId);
 
-    // S'abonner aux appels de service en temps réel
     const unsubRequests = subscribeToMVPServiceRequests((payload) => {
       if (payload.eventType === 'INSERT') {
         setServiceRequests(prev => [...prev, payload.new]);
@@ -113,9 +133,8 @@ export default function KitchenDashboard() {
       } else {
         loadData();
       }
-    });
+    }, restId);
 
-    // Actualiser le temps écoulé toutes les minutes
     const interval = setInterval(() => {
       setOrders(prev => [...prev]);
     }, 60000);
@@ -125,9 +144,8 @@ export default function KitchenDashboard() {
       unsubRequests();
       clearInterval(interval);
     };
-  }, [soundEnabled, playAlertSound, loadData]);
+  }, [loadingSession, session, soundEnabled, playAlertSound, loadData]);
 
-  // Actions Statut Commande
   const handleUpdateStatus = async (orderId: string, nextStatus: 'pending' | 'cooking' | 'ready') => {
     const success = await updateMVPOrderStatus(orderId, nextStatus);
     if (!success) {
@@ -135,7 +153,6 @@ export default function KitchenDashboard() {
     }
   };
 
-  // Traiter un appel serveur / note
   const handleResolveRequest = async (id: string) => {
     const success = await resolveServiceRequest(id);
     if (!success) {
@@ -143,12 +160,10 @@ export default function KitchenDashboard() {
     }
   };
 
-  // Archiver localement une commande prête
   const archiveOrder = (orderId: string) => {
     setArchivedOrderIds(prev => [...prev, orderId]);
   };
 
-  // Calcul du temps écoulé
   const getElapsedTime = (dateString: string) => {
     const diff = new Date().getTime() - new Date(dateString).getTime();
     const mins = Math.floor(diff / 60000);
@@ -156,7 +171,6 @@ export default function KitchenDashboard() {
     return `Il y a ${mins} min`;
   };
 
-  // Réinitialiser les mocks (pour démo/test)
   const handleResetMocks = () => {
     if (typeof window !== 'undefined') {
       window.localStorage.removeItem('mvp_orders');
@@ -166,11 +180,19 @@ export default function KitchenDashboard() {
     }
   };
 
-  // Filtrer les commandes par colonne (en excluant les archivées)
   const visibleOrders = orders.filter(o => !archivedOrderIds.includes(o.id));
   const pendingOrders = visibleOrders.filter(o => o.status === 'pending');
   const cookingOrders = visibleOrders.filter(o => o.status === 'cooking');
   const readyOrders = visibleOrders.filter(o => o.status === 'ready');
+
+  if (loadingSession) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-[#070b13] text-slate-100">
+        <ChefHat className="w-12 h-12 text-amber-500 animate-spin mb-4" />
+        <span className="text-xs text-slate-400 font-medium uppercase tracking-widest">Vérification de session...</span>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
@@ -184,28 +206,27 @@ export default function KitchenDashboard() {
   return (
     <div className="min-h-screen bg-[#070b13] text-slate-100 p-6 flex flex-col gap-6 font-sans">
       
-      {/* Top Banner Control */}
       <header className="flex justify-between items-center bg-slate-900/40 border border-slate-900 p-5 rounded-2xl glass-morphism">
         <div className="flex items-center gap-3.5">
-          <div className="w-11 h-11 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-500">
+          <div className="w-11 h-11 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-500 shrink-0">
             <ChefHat size={22} className="animate-pulse" />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-xl font-black tracking-tight">Console Cuisine</h1>
+              <h1 className="text-xl font-black tracking-tight">Console Cuisine ({session?.restaurant?.name})</h1>
               <span className="text-[9px] px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 font-bold uppercase tracking-wider">Temps Réel</span>
             </div>
-            <p className="text-xs text-slate-400 mt-0.5">Gestion des commandes et des appels clients</p>
+            <p className="text-xs text-slate-400 mt-0.5">
+              Employé : <strong className="text-amber-500">{session?.user?.name}</strong> ({session?.user?.role === 'cook' ? 'Cuisine' : session?.user?.role === 'waiter' ? 'Serveur' : 'Admin'})
+            </p>
           </div>
         </div>
 
         <div className="flex items-center gap-3">
-          {/* Sound toggle button */}
           <button
             onClick={() => {
               setSoundEnabled(!soundEnabled);
               if (!soundEnabled) {
-                // Initialiser l'audio au premier clic
                 const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
                 if (AudioContextClass) new AudioContextClass();
               }
@@ -229,7 +250,6 @@ export default function KitchenDashboard() {
             )}
           </button>
 
-          {/* Reset button (demo helper) */}
           <button
             onClick={handleResetMocks}
             title="Réinitialiser les données de démo"
@@ -237,13 +257,23 @@ export default function KitchenDashboard() {
           >
             <RotateCcw size={16} />
           </button>
+
+          <button
+            onClick={() => {
+              logoutMVPUser();
+              router.push('/login');
+            }}
+            className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-400 hover:text-red-450 hover:border-red-500/20 tap-feedback transition-colors flex items-center gap-1.5 text-xs font-bold uppercase"
+            title="Se déconnecter"
+          >
+            <LogOut size={16} />
+            <span className="hidden sm:inline">Déconnexion</span>
+          </button>
         </div>
       </header>
 
-      {/* Main Section: Alerts & Columns Grid */}
       <div className="flex flex-col gap-6 flex-grow">
         
-        {/* Banner Alert for Service Requests */}
         {serviceRequests.length > 0 && (
           <div className="w-full bg-red-500/5 border border-red-500/20 p-5 rounded-2xl flex flex-col gap-4 shadow-lg shadow-red-950/10">
             <div className="flex items-center gap-2">
@@ -291,10 +321,8 @@ export default function KitchenDashboard() {
           </div>
         )}
 
-        {/* Column stages Grid */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start flex-grow">
           
-          {/* Column 1: Pending Orders */}
           <div className="flex flex-col gap-4 h-full">
             <div className="flex items-center justify-between border-b border-slate-900 pb-2">
               <div className="flex items-center gap-2">
@@ -321,7 +349,6 @@ export default function KitchenDashboard() {
                     </span>
                   </div>
 
-                  {/* Items list */}
                   <div className="flex flex-col gap-2.5 bg-slate-950/40 p-3.5 rounded-xl border border-slate-850">
                     {order.items?.map((item) => (
                       <div key={item.id} className="text-xs font-semibold flex justify-between">
@@ -333,7 +360,6 @@ export default function KitchenDashboard() {
                     ))}
                   </div>
 
-                  {/* Actions */}
                   <button
                     onClick={() => handleUpdateStatus(order.id, 'cooking')}
                     className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-slate-950 font-black rounded-xl text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 tap-feedback shadow-lg shadow-blue-600/10"
@@ -353,7 +379,6 @@ export default function KitchenDashboard() {
             </div>
           </div>
 
-          {/* Column 2: Cooking Orders */}
           <div className="flex flex-col gap-4 h-full">
             <div className="flex items-center justify-between border-b border-slate-900 pb-2">
               <div className="flex items-center gap-2">
@@ -380,7 +405,6 @@ export default function KitchenDashboard() {
                     </span>
                   </div>
 
-                  {/* Items list */}
                   <div className="flex flex-col gap-2.5 bg-slate-950/40 p-3.5 rounded-xl border border-slate-850">
                     {order.items?.map((item) => (
                       <div key={item.id} className="text-xs font-semibold flex justify-between">
@@ -392,7 +416,6 @@ export default function KitchenDashboard() {
                     ))}
                   </div>
 
-                  {/* Actions */}
                   <button
                     onClick={() => handleUpdateStatus(order.id, 'ready')}
                     className="w-full py-3 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-xl text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 tap-feedback shadow-lg shadow-amber-500/10"
@@ -412,7 +435,6 @@ export default function KitchenDashboard() {
             </div>
           </div>
 
-          {/* Column 3: Ready Orders */}
           <div className="flex flex-col gap-4 h-full">
             <div className="flex items-center justify-between border-b border-slate-900 pb-2">
               <div className="flex items-center gap-2">
@@ -439,7 +461,6 @@ export default function KitchenDashboard() {
                     </span>
                   </div>
 
-                  {/* Items list */}
                   <div className="flex flex-col gap-2 bg-slate-950/40 p-3.5 rounded-xl border border-slate-850">
                     {order.items?.map((item) => (
                       <div key={item.id} className="text-xs font-semibold flex justify-between">
@@ -450,7 +471,6 @@ export default function KitchenDashboard() {
                     ))}
                   </div>
 
-                  {/* Actions */}
                   <button
                     onClick={() => archiveOrder(order.id)}
                     className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-black rounded-xl text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 tap-feedback shadow-lg shadow-emerald-600/10"

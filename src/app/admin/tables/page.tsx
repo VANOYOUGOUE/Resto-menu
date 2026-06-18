@@ -5,6 +5,7 @@ import {
   getMVPTables, 
   addMVPTable, 
   deleteMVPTable, 
+  getCurrentSession,
   AdminTable 
 } from '@/lib/mvp-db';
 import { QRCodeCanvas } from 'qrcode.react';
@@ -26,6 +27,7 @@ export default function TablesManagementPage() {
   const [newTableNumber, setNewTableNumber] = useState('');
   const [addingTable, setAddingTable] = useState(false);
   const [origin, setOrigin] = useState('http://localhost:3000');
+  const [restaurantId, setRestaurantId] = useState('');
 
   // Toast
   const [toast, setToast] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
@@ -35,9 +37,16 @@ export default function TablesManagementPage() {
       setOrigin(window.location.origin);
     }
 
+    const session = getCurrentSession();
+    let restId = '';
+    if (session) {
+      restId = session.restaurant.id;
+      setRestaurantId(restId);
+    }
+
     async function loadTables() {
       try {
-        const data = await getMVPTables();
+        const data = await getMVPTables(restId);
         // Filter out any potential duplicates by ID
         const uniqueData = data.filter((item, index, self) =>
           self.findIndex(t => t.id === item.id) === index
@@ -65,7 +74,7 @@ export default function TablesManagementPage() {
 
     setAddingTable(true);
     try {
-      const res = await addMVPTable(newTableNumber.trim());
+      const res = await addMVPTable(newTableNumber.trim(), restaurantId);
       if (res) {
         setTables(prev => {
           const updated = [...prev, res];

@@ -7,6 +7,7 @@ import {
   updateMenuItem, 
   deleteMenuItem, 
   uploadMenuImage, 
+  getCurrentSession,
   MenuItem,
   formatFCFA
 } from '@/lib/mvp-db';
@@ -51,9 +52,13 @@ export default function MenuManagementPage() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const loadMenu = async () => {
+  const [restaurantId, setRestaurantId] = useState('');
+
+  const loadMenu = async (restId?: string) => {
+    const idToUse = restId || restaurantId;
+    if (!idToUse) return;
     try {
-      const items = await getMenuItems();
+      const items = await getMenuItems(idToUse);
       // Remove any potential duplicates by ID
       const uniqueItems = items.filter((item, index, self) =>
         self.findIndex(t => t.id === item.id) === index
@@ -68,7 +73,11 @@ export default function MenuManagementPage() {
   };
 
   useEffect(() => {
-    loadMenu();
+    const session = getCurrentSession();
+    if (session) {
+      setRestaurantId(session.restaurant.id);
+      loadMenu(session.restaurant.id);
+    }
   }, []);
 
   const showToast = (text: string, type: 'success' | 'error' = 'success') => {
@@ -172,6 +181,7 @@ export default function MenuManagementPage() {
       }
 
       const itemInput = {
+        restaurant_id: restaurantId,
         name: formName,
         description: formDescription || null,
         price: parseFloat(formPrice),

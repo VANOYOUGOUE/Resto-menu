@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { 
@@ -19,10 +19,11 @@ import {
   Sparkles,
   Mail,
   MapPin,
-  ShieldCheck
+  ShieldCheck,
+  Users
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import { formatFCFA } from '@/lib/mvp-db';
+import { formatFCFA, getCurrentSession, logoutMVPUser } from '@/lib/mvp-db';
 
 export default function AdminLayout({
   children,
@@ -32,6 +33,10 @@ export default function AdminLayout({
   const pathname = usePathname();
   const router = useRouter();
   
+  // Session states
+  const [session, setSession] = useState<{ user: any; restaurant: any } | null>(null);
+  const [loadingSession, setLoadingSession] = useState(true);
+
   // Navigation states
   const [mobileOpen, setMobileOpen] = useState(false);
   
@@ -40,6 +45,17 @@ export default function AdminLayout({
   const [subExpDate, setSubExpDate] = useState('18 Juillet 2026');
   const [renewing, setRenewing] = useState(false);
   const [renewed, setRenewed] = useState(false);
+
+  // Route Guard checking
+  useEffect(() => {
+    const activeSession = getCurrentSession();
+    if (!activeSession || activeSession.user.role !== 'admin') {
+      router.push(`/login?redirect=${encodeURIComponent(pathname)}`);
+    } else {
+      setSession(activeSession);
+      setLoadingSession(false);
+    }
+  }, [pathname, router]);
 
   // Navigation Items
   const navItems = [
@@ -57,6 +73,11 @@ export default function AdminLayout({
       name: "Tables & QR Codes",
       href: "/admin/tables",
       icon: QrCode
+    },
+    {
+      name: "Employés",
+      href: "/admin/employees",
+      icon: Users
     }
   ];
 
@@ -73,26 +94,36 @@ export default function AdminLayout({
     setTimeout(() => {
       setRenewing(false);
       setRenewed(true);
-      // Prolonge d'un mois supplémentaire
       setSubExpDate('18 Août 2026');
       
-      // Lancer les confettis
       confetti({
         particleCount: 150,
         spread: 80,
         origin: { y: 0.6 }
       });
 
-      // Retirer le badge succès après 3 secondes
       setTimeout(() => setRenewed(false), 3000);
     }, 1500);
   };
 
   const handleLogout = () => {
     setProfileModalOpen(false);
-    // Simuler la déconnexion en redirigeant vers l'accueil
-    router.push('/');
+    logoutMVPUser();
+    router.push('/login');
   };
+
+  if (loadingSession) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-[#070b13] text-slate-100 font-sans">
+        <ChefHat className="w-12 h-12 text-amber-500 animate-spin mb-4" />
+        <span className="text-xs text-slate-400 font-medium uppercase tracking-widest">Vérification de session...</span>
+      </div>
+    );
+  }
+
+  const restaurantName = session?.restaurant?.name || 'Restaurant';
+  const userName = session?.user?.name || 'Gérant';
+  const userEmail = session?.user?.email || '';
 
   return (
     <div className="min-h-screen bg-[#070b13] text-slate-100 flex flex-col md:flex-row font-sans">
@@ -104,7 +135,7 @@ export default function AdminLayout({
             <ChefHat size={16} />
           </div>
           <span className="font-black text-sm tracking-tight text-white uppercase">
-            Resto Admin
+            {restaurantName}
           </span>
         </div>
         <button
@@ -122,16 +153,16 @@ export default function AdminLayout({
       `}>
         
         <div className="flex flex-col gap-8">
-          {/* Logo Section (hidden on mobile drawer top because of header bar) */}
+          {/* Logo Section */}
           <div className="hidden md:flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-500">
+            <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-500 shrink-0">
               <ChefHat size={20} />
             </div>
-            <div>
-              <span className="font-black text-base tracking-tight text-white uppercase block leading-none">
-                Resto Admin
+            <div className="min-w-0">
+              <span className="font-black text-sm tracking-tight text-white uppercase block leading-none truncate">
+                {restaurantName}
               </span>
-              <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mt-1 block">Panel Gérant</span>
+              <span className="text-[9px] text-slate-500 font-bold uppercase tracking-wider mt-1.5 block">Administration</span>
             </div>
           </div>
 
@@ -162,7 +193,7 @@ export default function AdminLayout({
         </div>
 
         {/* Sidebar Footer User Info & Exit */}
-        <div className="flex flex-col gap-3 border-t border-slate-900 pt-4">
+        <div className="flex flex-col gap-3 border-t border-slate-900/60 pt-4">
           <button
             onClick={() => setProfileModalOpen(true)}
             className="flex items-center justify-between w-full p-2.5 rounded-2xl bg-slate-950 border border-slate-900 hover:border-slate-800 transition-all text-left cursor-pointer group hover:bg-slate-900/40"
@@ -173,8 +204,8 @@ export default function AdminLayout({
                 <User size={16} />
               </div>
               <div className="min-w-0">
-                <span className="text-xs font-bold text-slate-200 block truncate">Gérant Bistro</span>
-                <span className="text-[9px] text-slate-500 block truncate font-mono">Abidjan, CI</span>
+                <span className="text-xs font-bold text-slate-200 block truncate">{userName}</span>
+                <span className="text-[9px] text-slate-500 block truncate font-mono">{restaurantName}</span>
               </div>
             </div>
             <div className="text-[8px] text-emerald-400 font-extrabold bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20 uppercase tracking-wider scale-95 mr-1 shrink-0">
@@ -239,7 +270,7 @@ export default function AdminLayout({
                       <User size={18} />
                     </div>
                     <div>
-                      <span className="text-sm font-bold text-white block">Gérant Bistro Premium</span>
+                      <span className="text-sm font-bold text-white block">{userName}</span>
                       <span className="text-[10px] text-slate-500 font-mono block">Rôle : Administrateur</span>
                     </div>
                   </div>
@@ -249,11 +280,11 @@ export default function AdminLayout({
                   <div className="flex flex-col gap-2">
                     <div className="flex items-center gap-2 text-xs text-slate-400">
                       <Mail size={13} className="text-slate-500" />
-                      <span>gerant@bistropremium.ci</span>
+                      <span>{userEmail}</span>
                     </div>
                     <div className="flex items-center gap-2 text-xs text-slate-400">
                       <MapPin size={13} className="text-slate-500" />
-                      <span>Abidjan, Côte d'Ivoire</span>
+                      <span>{restaurantName}</span>
                     </div>
                   </div>
                 </div>
@@ -264,7 +295,6 @@ export default function AdminLayout({
                 <div className="flex justify-between items-center">
                   <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Détails de l'Abonnement</span>
                   
-                  {/* Status Badge */}
                   <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-950/60 border border-emerald-500/20 text-emerald-400 text-[9px] font-black uppercase tracking-wider">
                     <span className="relative flex h-1.5 w-1.5">
                       <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
@@ -302,7 +332,6 @@ export default function AdminLayout({
                     </div>
                   </div>
 
-                  {/* Renew Button and simulation */}
                   <div className="mt-2">
                     <button
                       onClick={handleRenew}
