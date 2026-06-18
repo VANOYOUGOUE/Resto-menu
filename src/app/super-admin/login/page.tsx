@@ -1,13 +1,12 @@
 'use client';
 
-import React, { useState, useEffect, Suspense } from 'react';
+import React, { useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { loginMVPUser } from '@/lib/mvp-db';
 import { 
   ChefHat, 
   Lock, 
   Mail, 
-  Building2, 
   Sparkles, 
   AlertTriangle,
   ArrowRight,
@@ -15,12 +14,11 @@ import {
   EyeOff
 } from 'lucide-react';
 
-function LoginForm() {
+function SuperLoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirectUrl = searchParams.get('redirect') || '';
 
-  const [restaurantSlug, setRestaurantSlug] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -29,17 +27,9 @@ function LoginForm() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
-  // Auto-fill from URL query params if present
-  useEffect(() => {
-    const slug = searchParams.get('r');
-    if (slug) {
-      setRestaurantSlug(slug);
-    }
-  }, [searchParams]);
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!restaurantSlug || !email || !password) {
+    if (!email || !password) {
       setError("Veuillez remplir tous les champs.");
       return;
     }
@@ -48,30 +38,24 @@ function LoginForm() {
     setError(null);
 
     try {
-      const result = await loginMVPUser(
-        restaurantSlug.trim().toLowerCase(),
-        email.trim(),
-        password
-      );
+      // Send empty string as restaurantSlug to query super admin globally
+      const result = await loginMVPUser('', email.trim(), password);
 
       if (result) {
+        if (result.user.role !== 'super_admin') {
+          setError("Accès refusé. Ce portail est réservé aux Super Administrateurs.");
+          setLoading(false);
+          return;
+        }
+
         setSuccess(true);
-        const userRole = result.user.role;
         
-        // Wait 1 second for the success animation
+        // Redirect to super admin dashboard
         setTimeout(() => {
-          if (redirectUrl) {
-            router.push(redirectUrl);
-          } else if (userRole === 'super_admin') {
-            router.push('/super-admin');
-          } else if (userRole === 'admin') {
-            router.push('/admin');
-          } else {
-            router.push('/kitchen');
-          }
+          router.push(redirectUrl || '/super-admin');
         }, 1000);
       } else {
-        setError("Identifiants incorrects ou restaurant introuvable.");
+        setError("Identifiants incorrects ou vous n'êtes pas Super Administrateur.");
       }
     } catch (err: any) {
       console.error(err);
@@ -92,10 +76,10 @@ function LoginForm() {
           <ChefHat size={28} />
         </div>
         <h2 className="text-2xl font-black text-white tracking-tight flex items-center gap-2">
-          <span>RestoMenu Console</span>
+          <span>Super Console</span>
           <Sparkles size={16} className="text-amber-500" />
         </h2>
-        <p className="text-slate-400 text-xs mt-1">Connectez-vous à votre espace restaurant</p>
+        <p className="text-slate-400 text-xs mt-1">Accès à la plateforme globale Resto-menu</p>
       </div>
 
       {error && (
@@ -112,28 +96,11 @@ function LoginForm() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
             </svg>
           </div>
-          <span>Connexion réussie ! Redirection en cours...</span>
+          <span>Connexion réussie ! Chargement de la console...</span>
         </div>
       )}
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-5">
-        {/* Restaurant Slug input */}
-        <div className="flex flex-col gap-1.5 animate-fade-in">
-          <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Identifiant Restaurant</label>
-          <div className="relative">
-            <Building2 size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
-            <input 
-              type="text" 
-              required
-              placeholder="ex: bistro-premium"
-              value={restaurantSlug}
-              onChange={(e) => setRestaurantSlug(e.target.value)}
-              className="w-full pl-11 pr-4 py-3.5 bg-slate-950/80 border border-slate-850 rounded-2xl text-slate-100 placeholder-slate-600 focus:outline-none focus:border-amber-500 text-xs transition-colors font-mono focus:ring-1 focus:ring-amber-500/30"
-              disabled={loading || success}
-            />
-          </div>
-        </div>
-
         {/* Email input */}
         <div className="flex flex-col gap-1.5">
           <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Adresse E-mail</label>
@@ -142,7 +109,7 @@ function LoginForm() {
             <input 
               type="email" 
               required
-              placeholder="ex: chef@bistropremium.ci"
+              placeholder="ex: superadmin@restomenu.ci"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="w-full pl-11 pr-4 py-3.5 bg-slate-950/80 border border-slate-850 rounded-2xl text-slate-100 placeholder-slate-600 focus:outline-none focus:border-amber-500 text-xs transition-colors focus:ring-1 focus:ring-amber-500/30"
@@ -186,7 +153,7 @@ function LoginForm() {
             <div className="w-5 h-5 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
           ) : (
             <>
-              <span>Se Connecter</span>
+              <span>Se Connecter en Admin</span>
               <ArrowRight size={15} />
             </>
           )}
@@ -196,7 +163,7 @@ function LoginForm() {
   );
 }
 
-export default function LoginPage() {
+export default function SuperLoginPage() {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col items-center justify-center p-4 sm:p-6 md:p-8 font-sans antialiased relative overflow-hidden">
       {/* Dynamic light glows in background */}
@@ -208,7 +175,7 @@ export default function LoginPage() {
           <div className="w-10 h-10 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
         </div>
       }>
-        <LoginForm />
+        <SuperLoginForm />
       </Suspense>
     </div>
   );

@@ -268,53 +268,122 @@ export const loginMVPUser = async (
   email: string,
   password: string
 ): Promise<{ user: RestaurantUser; restaurant: Restaurant } | null> => {
+  const normalizedEmail = email.trim().toLowerCase();
+
   if (isSupabaseConfigured && supabase) {
-    const { data: restaurant, error: restErr } = await supabase
-      .from('restaurants')
-      .select('*')
-      .eq('slug', restaurantSlug)
-      .single();
+    let finalRestaurant = null;
+    let targetUser = null;
 
-    if (restErr || !restaurant) {
-      console.error('Restaurant not found:', restErr);
-      return null;
+    if (!restaurantSlug) {
+      // Login attempt without slug (Super Admin check)
+      const { data: user, error: userErr } = await supabase
+        .from('restaurant_users')
+        .select('*')
+        .eq('email', normalizedEmail)
+        .eq('password', password)
+        .eq('role', 'super_admin')
+        .single();
+
+      if (userErr || !user) {
+        if (userErr && userErr.code !== 'PGRST116') {
+          console.error('Super Admin login database error:', userErr);
+        }
+        return null;
+      }
+      targetUser = user;
+
+      const { data: restaurant, error: restErr } = await supabase
+        .from('restaurants')
+        .select('*')
+        .eq('id', user.restaurant_id)
+        .single();
+
+      if (restErr || !restaurant) {
+        if (restErr && restErr.code !== 'PGRST116') {
+          console.error('Super Admin restaurant database error:', restErr);
+        }
+        return null;
+      }
+      finalRestaurant = restaurant;
+    } else {
+      // Normal login with slug
+      const { data: restaurant, error: restErr } = await supabase
+        .from('restaurants')
+        .select('*')
+        .eq('slug', restaurantSlug)
+        .single();
+
+      if (restErr || !restaurant) {
+        if (restErr && restErr.code !== 'PGRST116') {
+          console.error('Restaurant query error:', restErr);
+        }
+        return null;
+      }
+      finalRestaurant = restaurant;
+
+      const { data: user, error: userErr } = await supabase
+        .from('restaurant_users')
+        .select('*')
+        .eq('restaurant_id', restaurant.id)
+        .eq('email', normalizedEmail)
+        .eq('password', password)
+        .single();
+
+      if (userErr || !user) {
+        if (userErr && userErr.code !== 'PGRST116') {
+          console.error('User login database error:', userErr);
+        }
+        return null;
+      }
+      targetUser = user;
     }
 
-    const { data: user, error: userErr } = await supabase
-      .from('restaurant_users')
-      .select('*')
-      .eq('restaurant_id', restaurant.id)
-      .eq('email', email)
-      .eq('password', password)
-      .single();
-
-    if (userErr || !user) {
-      console.error('User not found or password incorrect:', userErr);
-      return null;
-    }
-
-    const sessionObj = { user, restaurant };
+    const sessionObj = { user: targetUser, restaurant: finalRestaurant };
     if (typeof window !== 'undefined') {
-      window.sessionStorage.setItem('resto_session', JSON.stringify(sessionObj));
+      const sessionKey = targetUser.role === 'super_admin' ? 'super_resto_session' : 'resto_session';
+      window.sessionStorage.setItem(sessionKey, JSON.stringify(sessionObj));
     }
     return sessionObj;
   }
 
-  const restaurants = getLocalData<Restaurant[]>('mvp_restaurants', MOCK_RESTAURANTS);
-  const restaurant = restaurants.find(r => r.slug === restaurantSlug);
-  if (!restaurant) return null;
+  // Local storage / mock mode
+  let finalRestaurant = null;
+  let targetUser = null;
 
-  const users = getLocalData<RestaurantUser[]>('mvp_restaurant_users', MOCK_RESTAURANT_USERS);
-  const user = users.find(
-    u => u.restaurant_id === restaurant.id && 
-    u.email.toLowerCase() === email.toLowerCase() && 
-    u.password === password
-  );
-  if (!user) return null;
+  if (!restaurantSlug) {
+    const users = getLocalData<RestaurantUser[]>('mvp_restaurant_users', MOCK_RESTAURANT_USERS);
+    const user = users.find(
+      u => u.email.toLowerCase() === normalizedEmail && 
+      u.password === password && 
+      u.role === 'super_admin'
+    );
+    if (!user) return null;
+    targetUser = user;
 
-  const sessionObj = { user, restaurant };
+    const restaurants = getLocalData<Restaurant[]>('mvp_restaurants', MOCK_RESTAURANTS);
+    const restaurant = restaurants.find(r => r.id === user.restaurant_id);
+    if (!restaurant) return null;
+    finalRestaurant = restaurant;
+  } else {
+    const restaurants = getLocalData<Restaurant[]>('mvp_restaurants', MOCK_RESTAURANTS);
+    const restaurant = restaurants.find(r => r.slug === restaurantSlug);
+    if (!restaurant) return null;
+    finalRestaurant = restaurant;
+
+    const users = getLocalData<RestaurantUser[]>('mvp_restaurant_users', MOCK_RESTAURANT_USERS);
+    const user = users.find(
+      u => u.restaurant_id === restaurant.id && 
+      u.email.toLowerCase() === normalizedEmail && 
+      u.password === password
+    );
+    if (!user) return null;
+    targetUser = user;
+  }
+
+  const sessionObj = { user: targetUser, restaurant: finalRestaurant };
   if (typeof window !== 'undefined') {
-    window.sessionStorage.setItem('resto_session', JSON.stringify(sessionObj));
+    const sessionKey = targetUser.role === 'super_admin' ? 'super_resto_session' : 'resto_session';
+    window.sessionStorage.setItem(sessionKey, JSON.stringify(sessionObj));
   }
   return sessionObj;
 };
@@ -330,12 +399,32 @@ export const getCurrentSession = (): { user: RestaurantUser; restaurant: Restaur
   }
 };
 
+export const getSuperAdminSession = (): { user: RestaurantUser; restaurant: Restaurant } | null => {
+  if (typeof window === 'undefined') return null;
+  try {
+    const session = window.sessionStorage.getItem('super_resto_session');
+    return session ? JSON.parse(session) : null;
+  } catch (e) {
+    console.error('Error reading super admin session from sessionStorage:', e);
+    return null;
+  }
+};
+
 export const logoutMVPUser = (): void => {
   if (typeof window === 'undefined') return;
   try {
     window.sessionStorage.removeItem('resto_session');
   } catch (e) {
     console.error('Error clearing session:', e);
+  }
+};
+
+export const logoutSuperAdmin = (): void => {
+  if (typeof window === 'undefined') return;
+  try {
+    window.sessionStorage.removeItem('super_resto_session');
+  } catch (e) {
+    console.error('Error clearing super admin session:', e);
   }
 };
 

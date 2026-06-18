@@ -12,7 +12,7 @@ import {
   Menu,
   X
 } from 'lucide-react';
-import { getCurrentSession, logoutMVPUser } from '@/lib/mvp-db';
+import { getSuperAdminSession, logoutSuperAdmin } from '@/lib/mvp-db';
 
 export default function SuperAdminLayout({
   children,
@@ -27,9 +27,13 @@ export default function SuperAdminLayout({
   const [mobileOpen, setMobileOpen] = useState(false);
 
   useEffect(() => {
-    const activeSession = getCurrentSession();
+    if (pathname === '/super-admin/login') {
+      setLoadingSession(false);
+      return;
+    }
+    const activeSession = getSuperAdminSession();
     if (!activeSession || activeSession.user.role !== 'super_admin') {
-      router.push(`/login?redirect=${encodeURIComponent(pathname)}`);
+      router.push(`/super-admin/login?redirect=${encodeURIComponent(pathname)}`);
     } else {
       setSession(activeSession);
       setLoadingSession(false);
@@ -57,8 +61,8 @@ export default function SuperAdminLayout({
   };
 
   const handleLogout = () => {
-    logoutMVPUser();
-    router.push('/login');
+    logoutSuperAdmin();
+    router.push('/super-admin/login');
   };
 
   if (loadingSession) {
@@ -68,6 +72,10 @@ export default function SuperAdminLayout({
         <span className="text-xs text-slate-400 font-medium uppercase tracking-widest text-center">Vérification Super-Admin...</span>
       </div>
     );
+  }
+
+  if (pathname === '/super-admin/login') {
+    return <>{children}</>;
   }
 
   const userName = session?.user?.name || 'Super Admin';
