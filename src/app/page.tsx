@@ -26,9 +26,7 @@ export default function Home() {
             Resto-menu
           </span>
         </div>
-        <div className="text-xs px-2.5 py-1 rounded-full bg-slate-900 border border-slate-800 text-slate-400 font-semibold uppercase tracking-wider">
-          MVP Phase 1 & 2
-        </div>
+
       </header>
 
       {/* Main Content */}
