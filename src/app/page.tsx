@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { useRouter } from 'next/navigation';
-import { ChefHat, QrCode, Monitor, Sparkles, Layers, LayoutDashboard } from 'lucide-react';
+import { ChefHat, QrCode, Monitor, Sparkles, LayoutDashboard } from 'lucide-react';
 export default function Home() {
   const router = useRouter();
 
@@ -44,7 +44,7 @@ export default function Home() {
             Gérez votre restaurant en <span className="bg-gradient-to-r from-amber-500 to-yellow-400 bg-clip-text text-transparent">temps réel</span>
           </h1>
           <p className="text-slate-400 text-sm md:text-base max-w-2xl leading-relaxed mt-2">
-            Une architecture moderne basée sur Next.js, Tailwind et Supabase avec synchronisation temps réel pour connecter les clients, la cuisine, et le gérant du restaurant.
+            Offrez à vos clients une expérience fluide et sans attente directement depuis leur table. Optimisez le travail de vos équipes en cuisine et suivez vos performances en temps réel pour propulser votre établissement vers le succès.
           </p>
         </div>
 
@@ -148,15 +148,6 @@ export default function Home() {
             </button>
           </div>
 
-        </div>
-
-        {/* Info Block */}
-        <div className="p-5 rounded-2xl bg-slate-900/40 border border-slate-900 text-xs text-slate-400 flex gap-4 items-start max-w-xl mx-auto animate-slide-up" style={{ animationDelay: '0.4s' }}>
-          <Layers className="text-amber-500 flex-shrink-0" size={18} />
-          <div>
-            <span className="font-semibold text-slate-300 block mb-1">Architecture hybride Supabase / LocalStorage</span>
-            Cette application fonctionne de façon transparente en mode connecté (via Supabase) ou déconnecté (via stockage local). Ouvrez les trois volets simultanément pour tester les interactions temps réel !
-          </div>
         </div>
 
       </main>
