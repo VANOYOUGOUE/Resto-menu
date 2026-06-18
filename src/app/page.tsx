@@ -3,27 +3,15 @@
 import React from 'react';
 import { useRouter } from 'next/navigation';
 import { ChefHat, QrCode, Monitor, Sparkles, Layers, LayoutDashboard } from 'lucide-react';
-import { getCurrentSession } from '@/lib/mvp-db';
-
 export default function Home() {
   const router = useRouter();
 
   const handleKitchenRedirect = () => {
-    const session = getCurrentSession();
-    if (session) {
-      router.push('/kitchen');
-    } else {
-      router.push('/login?redirect=/kitchen');
-    }
+    router.push('/login?redirect=/kitchen');
   };
 
   const handleAdminRedirect = () => {
-    const session = getCurrentSession();
-    if (session && session.user.role === 'admin') {
-      router.push('/admin');
-    } else {
-      router.push('/login?redirect=/admin');
-    }
+    router.push('/login?redirect=/admin');
   };
 
   return (
