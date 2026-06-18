@@ -4,6 +4,9 @@ export interface Restaurant {
   id: string;
   name: string;
   slug: string;
+  subscription_status?: 'trialing' | 'active' | 'past_due' | 'suspended';
+  trial_ends_at?: string;
+  subscription_ends_at?: string | null;
   created_at?: string;
 }
 
@@ -12,7 +15,7 @@ export interface RestaurantUser {
   restaurant_id: string;
   name: string;
   email: string;
-  role: 'admin' | 'cook' | 'waiter';
+  role: 'admin' | 'cook' | 'waiter' | 'super_admin';
   password?: string;
   created_at?: string;
 }
@@ -63,12 +66,36 @@ export interface AdminTable {
 
 // Mock Restaurants
 const MOCK_RESTAURANTS: Restaurant[] = [
-  { id: '22222222-2222-2222-2222-222222222222', name: 'Bistro Premium', slug: 'bistro-premium' },
-  { id: '33333333-3333-3333-3333-333333333333', name: 'Maquis Cacao', slug: 'maquis-cacao' }
+  { 
+    id: '11111111-1111-1111-1111-111111111110', 
+    name: 'Resto-menu Platform', 
+    slug: 'resto-menu', 
+    subscription_status: 'active',
+    trial_ends_at: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
+    subscription_ends_at: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString()
+  },
+  { 
+    id: '22222222-2222-2222-2222-222222222222', 
+    name: 'Bistro Premium', 
+    slug: 'bistro-premium',
+    subscription_status: 'active',
+    trial_ends_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+    subscription_ends_at: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString()
+  },
+  { 
+    id: '33333333-3333-3333-3333-333333333333', 
+    name: 'Maquis Cacao', 
+    slug: 'maquis-cacao',
+    subscription_status: 'trialing',
+    trial_ends_at: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString(),
+    subscription_ends_at: null
+  }
 ];
 
 // Mock Users
 const MOCK_RESTAURANT_USERS: RestaurantUser[] = [
+  // Platform Super Admin
+  { id: '00000000-0000-0000-0000-000000000000', restaurant_id: '11111111-1111-1111-1111-111111111110', name: 'Super Administrateur', email: 'superadmin@restomenu.ci', role: 'super_admin', password: 'super123' },
   // Bistro Premium
   { id: '11111111-1111-1111-1111-111111111111', restaurant_id: '22222222-2222-2222-2222-222222222222', name: 'Gérant Bistro', email: 'gerant@bistropremium.ci', role: 'admin', password: 'admin123' },
   { id: '11111111-1111-1111-1111-111111111112', restaurant_id: '22222222-2222-2222-2222-222222222222', name: 'Chef Amadou', email: 'chef@bistropremium.ci', role: 'cook', password: 'chef123' },
@@ -1100,4 +1127,128 @@ export const deleteMVPTable = async (id: string): Promise<boolean> => {
   const filtered = tables.filter(t => t.id !== id);
   setLocalData('mvp_tables', filtered);
   return true;
+};
+
+// =========================================================================
+// SUBSCRIPTION & PLATFORM MANAGEMENT (PHASE 4)
+// =========================================================================
+
+export const isRestaurantSubscriptionValid = (restaurant: Restaurant): boolean => {
+  if (!restaurant) return false;
+  
+  if (restaurant.subscription_status === 'suspended') {
+    return false;
+  }
+  
+  if (restaurant.subscription_status === 'active') {
+    return true;
+  }
+  
+  if (restaurant.subscription_status === 'trialing' && restaurant.trial_ends_at) {
+    const trialEnd = new Date(restaurant.trial_ends_at).getTime();
+    return Date.now() < trialEnd;
+  }
+  
+  if (restaurant.subscription_status === 'past_due' && restaurant.subscription_ends_at) {
+    const end = new Date(restaurant.subscription_ends_at).getTime();
+    return Date.now() < end;
+  }
+
+  return false;
+};
+
+export const getMVPRestaurants = async (): Promise<Restaurant[]> => {
+  if (isSupabaseConfigured && supabase) {
+    const { data, error } = await supabase
+      .from('restaurants')
+      .select('*')
+      .order('name');
+    if (!error && data) return data;
+    console.error('Error fetching restaurants from Supabase:', error);
+    return [];
+  }
+  return getLocalData<Restaurant[]>('mvp_restaurants', MOCK_RESTAURANTS);
+};
+
+export const addMVPRestaurant = async (name: string, slug: string): Promise<Restaurant | null> => {
+  const trialEnds = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+  
+  if (isSupabaseConfigured && supabase) {
+    const { data, error } = await supabase
+      .from('restaurants')
+      .insert({
+        name,
+        slug: slug.trim().toLowerCase(),
+        subscription_status: 'trialing',
+        trial_ends_at: trialEnds
+      })
+      .select()
+      .single();
+    if (!error && data) return data;
+    console.error('Error adding restaurant to Supabase:', error);
+    throw new Error(error?.message || "Erreur de création du restaurant.");
+  }
+  
+  const restaurants = getLocalData<Restaurant[]>('mvp_restaurants', MOCK_RESTAURANTS);
+  if (restaurants.some(r => r.slug === slug.trim().toLowerCase())) {
+    throw new Error("Un restaurant avec cet identifiant (slug) existe déjà.");
+  }
+  
+  const newRestaurant: Restaurant = {
+    id: `rest-${Math.random().toString(36).substring(2, 9)}`,
+    name,
+    slug: slug.trim().toLowerCase(),
+    subscription_status: 'trialing',
+    trial_ends_at: trialEnds,
+    subscription_ends_at: null,
+    created_at: new Date().toISOString()
+  };
+  restaurants.push(newRestaurant);
+  setLocalData('mvp_restaurants', restaurants);
+  return newRestaurant;
+};
+
+export const updateMVPRestaurantSubscription = async (
+  restaurantId: string,
+  status: Restaurant['subscription_status'],
+  subscriptionEndsAt?: string | null
+): Promise<boolean> => {
+  if (isSupabaseConfigured && supabase) {
+    const updates: Partial<Restaurant> = { subscription_status: status };
+    if (subscriptionEndsAt !== undefined) {
+      updates.subscription_ends_at = subscriptionEndsAt;
+    }
+    const { error } = await supabase
+      .from('restaurants')
+      .update(updates)
+      .eq('id', restaurantId);
+    return !error;
+  }
+  
+  const restaurants = getLocalData<Restaurant[]>('mvp_restaurants', MOCK_RESTAURANTS);
+  const idx = restaurants.findIndex(r => r.id === restaurantId);
+  if (idx !== -1) {
+    restaurants[idx].subscription_status = status;
+    if (subscriptionEndsAt !== undefined) {
+      restaurants[idx].subscription_ends_at = subscriptionEndsAt;
+    }
+    setLocalData('mvp_restaurants', restaurants);
+    
+    if (typeof window !== 'undefined') {
+      const sessionStr = window.sessionStorage.getItem('resto_session');
+      if (sessionStr) {
+        const session = JSON.parse(sessionStr);
+        if (session.restaurant.id === restaurantId) {
+          session.restaurant.subscription_status = status;
+          if (subscriptionEndsAt !== undefined) {
+            session.restaurant.subscription_ends_at = subscriptionEndsAt;
+          }
+          window.sessionStorage.setItem('resto_session', JSON.stringify(session));
+        }
+      }
+    }
+    
+    return true;
+  }
+  return false;
 };

@@ -19,6 +19,9 @@ create table restaurants (
     id uuid primary key default uuid_generate_v4(),
     name varchar(255) not null,
     slug varchar(255) not null unique,
+    subscription_status varchar(50) not null default 'trialing' check (subscription_status in ('trialing', 'active', 'past_due', 'suspended')),
+    trial_ends_at timestamp with time zone not null default (now() + interval '7 days'),
+    subscription_ends_at timestamp with time zone,
     created_at timestamp with time zone default timezone('utc'::text, now())
 );
 create index idx_restaurants_slug on restaurants(slug);
@@ -30,7 +33,7 @@ create table restaurant_users (
     name varchar(255) not null,
     email varchar(255) not null,
     password varchar(255) not null, -- Stocké en clair pour le prototype/MVP
-    role varchar(50) not null check (role in ('admin', 'cook', 'waiter')),
+    role varchar(50) not null check (role in ('admin', 'cook', 'waiter', 'super_admin')),
     created_at timestamp with time zone default timezone('utc'::text, now()),
     constraint unique_restaurant_email unique (restaurant_id, email)
 );
@@ -102,12 +105,15 @@ alter publication supabase_realtime add table service_requests;
 -- =========================================================================
 
 -- 1. Restaurants de démonstration
-insert into restaurants (id, name, slug) values
-('22222222-2222-2222-2222-222222222222', 'Bistro Premium', 'bistro-premium'),
-('33333333-3333-3333-3333-333333333333', 'Maquis Cacao', 'maquis-cacao');
+insert into restaurants (id, name, slug, subscription_status, trial_ends_at, subscription_ends_at) values
+('11111111-1111-1111-1111-111111111110', 'Resto-menu Platform', 'resto-menu', 'active', now() + interval '365 days', now() + interval '365 days'),
+('22222222-2222-2222-2222-222222222222', 'Bistro Premium', 'bistro-premium', 'active', now() + interval '7 days', now() + interval '15 days'),
+('33333333-3333-3333-3333-333333333333', 'Maquis Cacao', 'maquis-cacao', 'trialing', now() + interval '5 days', null);
 
 -- 2. Comptes d'accès pour les gérants et employés
 insert into restaurant_users (id, restaurant_id, name, email, password, role) values
+-- Platform Super Admin
+('00000000-0000-0000-0000-000000000000', '11111111-1111-1111-1111-111111111110', 'Super Administrateur', 'superadmin@restomenu.ci', 'super123', 'super_admin'),
 -- Bistro Premium
 ('11111111-1111-1111-1111-111111111111', '22222222-2222-2222-2222-222222222222', 'Gérant Bistro', 'gerant@bistropremium.ci', 'admin123', 'admin'),
 ('11111111-1111-1111-1111-111111111112', '22222222-2222-2222-2222-222222222222', 'Chef Amadou', 'chef@bistropremium.ci', 'chef123', 'cook'),

@@ -11,6 +11,8 @@ import {
   subscribeToMVPServiceRequests,
   getCurrentSession,
   logoutMVPUser,
+  getMVPRestaurantById,
+  isRestaurantSubscriptionValid,
   Order, 
   ServiceRequest,
   RestaurantUser
@@ -28,13 +30,15 @@ import {
   Receipt, 
   UtensilsCrossed, 
   Archive,
-  LogOut
+  LogOut,
+  AlertTriangle
 } from 'lucide-react';
 
 export default function KitchenDashboard() {
   const router = useRouter();
   const [session, setSession] = useState<{ user: RestaurantUser; restaurant: any } | null>(null);
   const [loadingSession, setLoadingSession] = useState(true);
+  const [isSubscriptionValid, setIsSubscriptionValid] = useState(true);
 
   const [orders, setOrders] = useState<Order[]>([]);
   const [serviceRequests, setServiceRequests] = useState<ServiceRequest[]>([]);
@@ -46,13 +50,31 @@ export default function KitchenDashboard() {
 
   // Guard checking
   useEffect(() => {
-    const activeSession = getCurrentSession();
-    if (!activeSession) {
-      router.push('/login?redirect=/kitchen');
-    } else {
+    async function checkAuth() {
+      const activeSession = getCurrentSession();
+      if (!activeSession) {
+        router.push('/login?redirect=/kitchen');
+        return;
+      }
+      
+      try {
+        const freshRest = await getMVPRestaurantById(activeSession.restaurant.id);
+        if (freshRest) {
+          activeSession.restaurant = freshRest;
+          if (typeof window !== 'undefined') {
+            window.sessionStorage.setItem('resto_session', JSON.stringify(activeSession));
+          }
+        }
+      } catch (err) {
+        console.error("Error verifying kitchen active subscription", err);
+      }
+
+      const isValid = isRestaurantSubscriptionValid(activeSession.restaurant);
+      setIsSubscriptionValid(isValid);
       setSession(activeSession);
       setLoadingSession(false);
     }
+    checkAuth();
   }, [router]);
 
   const playAlertSound = useCallback(() => {
@@ -190,6 +212,29 @@ export default function KitchenDashboard() {
       <div className="min-h-screen flex flex-col items-center justify-center bg-[#070b13] text-slate-100">
         <ChefHat className="w-12 h-12 text-amber-500 animate-spin mb-4" />
         <span className="text-xs text-slate-400 font-medium uppercase tracking-widest">Vérification de session...</span>
+      </div>
+    );
+  }
+
+  if (!isSubscriptionValid) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-[#070b13] px-6 text-center text-slate-100 font-sans">
+        <div className="w-16 h-16 rounded-3xl bg-red-500/10 border border-red-500/20 flex items-center justify-center text-red-400 mb-4 animate-bounce">
+          <AlertTriangle size={32} />
+        </div>
+        <h2 className="text-xl font-black uppercase text-white tracking-tight">Accès Cuisine Suspendu</h2>
+        <p className="text-sm text-slate-400 mt-2 max-w-sm leading-relaxed">
+          Les services de cet établissement sont temporairement interrompus en raison d'un abonnement expiré. Veuillez contacter le gérant pour régulariser le paiement de 20 000 FCFA.
+        </p>
+        <button
+          onClick={() => {
+            logoutMVPUser();
+            router.push('/login');
+          }}
+          className="mt-6 px-5 py-3 bg-slate-900 hover:bg-slate-850 border border-slate-800 text-xs font-bold uppercase tracking-wider rounded-xl text-slate-300 transition-colors cursor-pointer"
+        >
+          Se Déconnecter
+        </button>
       </div>
     );
   }

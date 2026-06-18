@@ -62,6 +62,8 @@ function LoginForm() {
         setTimeout(() => {
           if (redirectUrl) {
             router.push(redirectUrl);
+          } else if (userRole === 'super_admin') {
+            router.push('/super-admin');
           } else if (userRole === 'admin') {
             router.push('/admin');
           } else {

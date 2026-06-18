@@ -8,6 +8,7 @@ import {
   createServiceRequest, 
   getMVPTableById,
   getMVPRestaurantById,
+  isRestaurantSubscriptionValid,
   MenuItem,
   formatFCFA
 } from '@/lib/mvp-db';
@@ -74,6 +75,13 @@ export default function ClientMenuPage() {
 
         const restaurantObj = await getMVPRestaurantById(tableObj.restaurant_id);
         setRestaurantName(restaurantObj?.name || 'Notre Restaurant');
+
+        const isSubscriptionValid = restaurantObj ? isRestaurantSubscriptionValid(restaurantObj) : false;
+        if (!isSubscriptionValid) {
+          setError("Ce restaurant a temporairement suspendu son service de commande en ligne.");
+          setLoading(false);
+          return;
+        }
 
         const items = await getMenuItems(tableObj.restaurant_id);
         setMenuItems(items);

@@ -23,7 +23,13 @@ import {
   Users
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import { formatFCFA, getCurrentSession, logoutMVPUser } from '@/lib/mvp-db';
+import { 
+  formatFCFA, 
+  getCurrentSession, 
+  logoutMVPUser,
+  getMVPRestaurantById,
+  isRestaurantSubscriptionValid
+} from '@/lib/mvp-db';
 
 export default function AdminLayout({
   children,
@@ -48,13 +54,36 @@ export default function AdminLayout({
 
   // Route Guard checking
   useEffect(() => {
-    const activeSession = getCurrentSession();
-    if (!activeSession || activeSession.user.role !== 'admin') {
-      router.push(`/login?redirect=${encodeURIComponent(pathname)}`);
-    } else {
+    async function checkAuth() {
+      const activeSession = getCurrentSession();
+      if (!activeSession || activeSession.user.role !== 'admin') {
+        router.push(`/login?redirect=${encodeURIComponent(pathname)}`);
+        return;
+      }
+      
+      try {
+        const freshRest = await getMVPRestaurantById(activeSession.restaurant.id);
+        if (freshRest) {
+          activeSession.restaurant = freshRest;
+          if (typeof window !== 'undefined') {
+            window.sessionStorage.setItem('resto_session', JSON.stringify(activeSession));
+          }
+        }
+      } catch (err) {
+        console.error("Error verifying active subscription", err);
+      }
+
+      const isValid = isRestaurantSubscriptionValid(activeSession.restaurant);
+      
+      if (!isValid && pathname !== '/admin/billing') {
+        router.push('/admin/billing');
+        return;
+      }
+
       setSession(activeSession);
       setLoadingSession(false);
     }
+    checkAuth();
   }, [pathname, router]);
 
   // Navigation Items
@@ -78,6 +107,11 @@ export default function AdminLayout({
       name: "Employés",
       href: "/admin/employees",
       icon: Users
+    },
+    {
+      name: "Facturation",
+      href: "/admin/billing",
+      icon: CreditCard
     }
   ];
 
