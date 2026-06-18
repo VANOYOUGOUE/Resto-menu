@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "QuickOrder SaaS - Commande Restaurant par QR Code",
+  title: "Resto-menu - Commande Restaurant par QR Code",
   description: "Commandez en salle en scannant un QR code dynamique et suivez vos plats en temps réel.",
 };
 

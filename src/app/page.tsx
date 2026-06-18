@@ -23,7 +23,7 @@ export default function Home() {
             <ChefHat size={18} />
           </div>
           <span className="font-bold text-lg tracking-tight bg-gradient-to-r from-amber-400 to-yellow-300 bg-clip-text text-transparent">
-            QuickOrder SaaS
+            Resto-menu
           </span>
         </div>
         <div className="text-xs px-2.5 py-1 rounded-full bg-slate-900 border border-slate-800 text-slate-400 font-semibold uppercase tracking-wider">
@@ -154,7 +154,7 @@ export default function Home() {
 
       {/* Footer */}
       <footer className="px-6 py-6 border-t border-slate-900 text-center text-xs text-slate-500 bg-slate-950">
-        © 2026 QuickOrder SaaS • Tous droits réservés.
+        © 2026 Resto-menu • Tous droits réservés.
       </footer>
     </div>
   );
