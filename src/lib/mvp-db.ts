@@ -382,7 +382,7 @@ export const getMVPOrders = async (): Promise<Order[]> => {
     // Récupérer et enrichir les items
     const enrichedOrders = await Promise.all(
       ordersData.map(async (order) => {
-        const { data: itemsData, error: itemsErr } = await supabase
+        const { data: itemsData, error: itemsErr } = await supabase!
           .from('order_items')
           .select('*, menu_item:menu_items(*)')
           .eq('order_id', order.id);
@@ -538,7 +538,7 @@ export const subscribeToMVPOrders = (
         async (payload) => {
           if (payload.eventType === 'INSERT') {
             // Charger les items de la nouvelle commande pour l'interface cuisine
-            const { data: itemsData } = await supabase
+            const { data: itemsData } = await supabase!
               .from('order_items')
               .select('*, menu_item:menu_items(*)')
               .eq('order_id', payload.new.id);
@@ -560,7 +560,7 @@ export const subscribeToMVPOrders = (
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      supabase!.removeChannel(channel);
     };
   }
 
@@ -606,7 +606,7 @@ export const subscribeToMVPServiceRequests = (
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      supabase!.removeChannel(channel);
     };
   }
 
@@ -653,7 +653,7 @@ export const subscribeToMVPOrderStatus = (
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      supabase!.removeChannel(channel);
     };
   }
 
