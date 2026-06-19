@@ -1,4 +1,5 @@
 import { supabase, isSupabaseConfigured } from './supabase';
+import { createNativeUser, deleteNativeUser } from '@/app/actions/auth-actions';
 
 export interface Restaurant {
   id: string;
@@ -278,25 +279,35 @@ export const loginMVPUser = async (
     let finalRestaurant = null;
     let targetUser = null;
 
+    // 1. Authentifier via Supabase Auth (GoTrue)
+    const { data: authData, error: authErr } = await supabase.auth.signInWithPassword({
+      email: normalizedEmail,
+      password: password
+    });
+
+    if (authErr || !authData.user) {
+      // Ignorer l'affichage en console pour éviter l'overlay Next.js dev
+      return null;
+    }
+
+    const userId = authData.user.id;
+
     if (!restaurantSlug) {
-      // Login attempt without slug (Super Admin check)
+      // Connexion Super Admin
       const { data: user, error: userErr } = await supabase
         .from('platform_admins')
         .select('*')
-        .eq('email', normalizedEmail)
-        .eq('password', password)
+        .eq('id', userId)
         .single();
 
       if (userErr || !user) {
-        if (userErr && userErr.code !== 'PGRST116') {
-          console.error('Super Admin login database error:', userErr);
-        }
+        await supabase.auth.signOut();
         return null;
       }
       targetUser = { ...user, role: 'super_admin' as const };
       finalRestaurant = null;
     } else {
-      // Normal login with slug
+      // Connexion collaborateur de restaurant
       const { data: restaurant, error: restErr } = await supabase
         .from('restaurants')
         .select('*')
@@ -304,9 +315,7 @@ export const loginMVPUser = async (
         .single();
 
       if (restErr || !restaurant) {
-        if (restErr && restErr.code !== 'PGRST116') {
-          console.error('Restaurant query error:', restErr);
-        }
+        await supabase.auth.signOut();
         return null;
       }
       finalRestaurant = restaurant;
@@ -314,15 +323,12 @@ export const loginMVPUser = async (
       const { data: user, error: userErr } = await supabase
         .from('restaurant_users')
         .select('*')
+        .eq('id', userId)
         .eq('restaurant_id', restaurant.id)
-        .eq('email', normalizedEmail)
-        .eq('password', password)
         .single();
 
       if (userErr || !user) {
-        if (userErr && userErr.code !== 'PGRST116') {
-          console.error('User login database error:', userErr);
-        }
+        await supabase.auth.signOut();
         return null;
       }
       targetUser = user;
@@ -395,7 +401,10 @@ export const getSuperAdminSession = (): { user: PlatformAdmin; restaurant: Resta
   }
 };
 
-export const logoutMVPUser = (): void => {
+export const logoutMVPUser = async (): Promise<void> => {
+  if (isSupabaseConfigured && supabase) {
+    await supabase.auth.signOut();
+  }
   if (typeof window === 'undefined') return;
   try {
     window.sessionStorage.removeItem('resto_session');
@@ -404,7 +413,10 @@ export const logoutMVPUser = (): void => {
   }
 };
 
-export const logoutSuperAdmin = (): void => {
+export const logoutSuperAdmin = async (): Promise<void> => {
+  if (isSupabaseConfigured && supabase) {
+    await supabase.auth.signOut();
+  }
   if (typeof window === 'undefined') return;
   try {
     window.sessionStorage.removeItem('super_resto_session');
@@ -438,22 +450,26 @@ export const addMVPEmployee = async (
   employee: Omit<RestaurantUser, 'id' | 'restaurant_id'>
 ): Promise<RestaurantUser | null> => {
   if (isSupabaseConfigured && supabase) {
-    const { data, error } = await supabase
-      .from('restaurant_users')
-      .insert({
+    try {
+      const nativeUser = await createNativeUser(
+        employee.email,
+        employee.password || 'resto123',
+        employee.name,
+        employee.role,
+        restaurantId
+      );
+
+      return {
+        id: nativeUser.id,
         restaurant_id: restaurantId,
         name: employee.name,
         email: employee.email,
-        password: employee.password,
         role: employee.role
-      })
-      .select()
-      .single();
-    if (error) {
+      };
+    } catch (error: any) {
       console.error('Error adding employee:', error);
-      return null;
+      throw new Error(error.message || "Erreur de création de l'employé.");
     }
-    return data;
   }
   const users = getLocalData<RestaurantUser[]>('mvp_restaurant_users', MOCK_RESTAURANT_USERS);
   if (users.some(u => u.restaurant_id === restaurantId && u.email.toLowerCase() === employee.email.toLowerCase())) {
@@ -471,11 +487,13 @@ export const addMVPEmployee = async (
 
 export const deleteMVPEmployee = async (employeeId: string): Promise<boolean> => {
   if (isSupabaseConfigured && supabase) {
-    const { error } = await supabase
-      .from('restaurant_users')
-      .delete()
-      .eq('id', employeeId);
-    return !error;
+    try {
+      await deleteNativeUser(employeeId);
+      return true;
+    } catch (error) {
+      console.error('Error deleting employee:', error);
+      return false;
+    }
   }
   const users = getLocalData<RestaurantUser[]>('mvp_restaurant_users', MOCK_RESTAURANT_USERS);
   const filtered = users.filter(u => u.id !== employeeId);

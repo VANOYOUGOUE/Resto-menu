@@ -1,9 +1,11 @@
 -- =========================================================================
 -- Phase 1 & 2 MVP - Schéma de base de données multi-restaurant pour Supabase
+-- avec Authentification Native (GoTrue)
 -- =========================================================================
 
--- Activation de l'extension pour la génération d'UUID
+-- Activation des extensions requises
 create extension if not exists "uuid-ossp";
+create extension if not exists pgcrypto;
 
 -- Suppression des tables existantes pour réinitialisation propre
 drop table if exists service_requests cascade;
@@ -14,6 +16,10 @@ drop table if exists restaurant_users cascade;
 drop table if exists platform_admins cascade;
 drop table if exists menu_items cascade;
 drop table if exists restaurants cascade;
+
+-- Désactivation des anciens triggers/fonctions s'ils existent
+drop trigger if exists on_auth_user_created on auth.users;
+drop function if exists public.handle_new_user();
 
 -- 1. Table des Restaurants
 create table restaurants (
@@ -29,11 +35,10 @@ create index idx_restaurants_slug on restaurants(slug);
 
 -- 2. Table des Utilisateurs (Gérants et Employés de restaurant)
 create table restaurant_users (
-    id uuid primary key default uuid_generate_v4(),
+    id uuid primary key references auth.users(id) on delete cascade,
     restaurant_id uuid not null references restaurants(id) on delete cascade,
     name varchar(255) not null,
     email varchar(255) not null,
-    password varchar(255) not null, -- Stocké en clair pour le prototype/MVP
     role varchar(50) not null check (role in ('admin', 'cook', 'waiter')),
     created_at timestamp with time zone default timezone('utc'::text, now()),
     constraint unique_restaurant_email unique (restaurant_id, email)
@@ -42,13 +47,41 @@ create index idx_restaurant_users_email on restaurant_users(email);
 
 -- 2.5 Table des Administrateurs de la Plateforme (Super Admins)
 create table platform_admins (
-    id uuid primary key default uuid_generate_v4(),
+    id uuid primary key references auth.users(id) on delete cascade,
     name varchar(255) not null,
     email varchar(255) not null unique,
-    password varchar(255) not null,
     created_at timestamp with time zone default timezone('utc'::text, now())
 );
 create index idx_platform_admins_email on platform_admins(email);
+
+-- Déclencheur SQL pour copier automatiquement le profil lors de l'insertion dans auth.users
+create or replace function public.handle_new_user()
+returns trigger as $$
+begin
+  if new.raw_user_meta_data->>'role' = 'super_admin' then
+    insert into public.platform_admins (id, name, email)
+    values (
+      new.id,
+      coalesce(new.raw_user_meta_data->>'name', 'Super Administrateur'),
+      new.email
+    );
+  else
+    insert into public.restaurant_users (id, restaurant_id, name, email, role)
+    values (
+      new.id,
+      (new.raw_user_meta_data->>'restaurant_id')::uuid,
+      coalesce(new.raw_user_meta_data->>'name', 'Collaborateur'),
+      new.email,
+      coalesce(new.raw_user_meta_data->>'role', 'waiter')
+    );
+  end if;
+  return new;
+end;
+$$ language plpgsql security definer;
+
+create trigger on_auth_user_created
+  after insert on auth.users
+  for each row execute procedure public.handle_new_user();
 
 -- 3. Table des Tables de restaurant
 create table tables (
@@ -120,19 +153,99 @@ insert into restaurants (id, name, slug, subscription_status, trial_ends_at, sub
 ('22222222-2222-2222-2222-222222222222', 'Bistro Premium', 'bistro-premium', 'active', now() + interval '7 days', now() + interval '15 days'),
 ('33333333-3333-3333-3333-333333333333', 'Maquis Cacao', 'maquis-cacao', 'trialing', now() + interval '5 days', null);
 
--- 2. Comptes d'accès pour les gérants et employés
-insert into restaurant_users (id, restaurant_id, name, email, password, role) values
--- Bistro Premium
-('11111111-1111-1111-1111-111111111111', '22222222-2222-2222-2222-222222222222', 'Gérant Bistro', 'gerant@bistropremium.ci', 'admin123', 'admin'),
-('11111111-1111-1111-1111-111111111112', '22222222-2222-2222-2222-222222222222', 'Chef Amadou', 'chef@bistropremium.ci', 'chef123', 'cook'),
-('11111111-1111-1111-1111-111111111113', '22222222-2222-2222-2222-222222222222', 'Serveur Koffi', 'serveur@bistropremium.ci', 'serveur123', 'waiter'),
--- Maquis Cacao
-('11111111-1111-1111-1111-222222222221', '33333333-3333-3333-3333-333333333333', 'Gérant Cacao', 'gerant@maquiscacao.ci', 'admin123', 'admin'),
-('11111111-1111-1111-1111-222222222222', '33333333-3333-3333-3333-333333333333', 'Chef Awa', 'chef@maquiscacao.ci', 'chef123', 'cook');
+-- 2. Nettoyage et insertion dans la table native d'authentification auth.users
+delete from auth.users where id in (
+  '00000000-0000-0000-0000-000000000000',
+  '11111111-1111-1111-1111-111111111111',
+  '11111111-1111-1111-1111-111111111112',
+  '11111111-1111-1111-1111-111111111113',
+  '11111111-1111-1111-1111-222222222221',
+  '11111111-1111-1111-1111-222222222222'
+);
 
--- 2.5 Comptes d'accès pour les Administrateurs de la Plateforme (Super Admin)
-insert into platform_admins (id, name, email, password) values
-('00000000-0000-0000-0000-000000000000', 'Super Administrateur', 'superadmin@restomenu.ci', 'super123');
+insert into auth.users (
+  id,
+  email,
+  encrypted_password,
+  email_confirmed_at,
+  confirmed_at,
+  raw_app_meta_data,
+  raw_user_meta_data,
+  role,
+  aud
+) values
+-- Super Admin (superadmin@restomenu.ci / password: super123)
+(
+  '00000000-0000-0000-0000-000000000000',
+  'superadmin@restomenu.ci',
+  crypt('super123', gen_salt('bf')),
+  now(),
+  now(),
+  '{"provider": "email", "providers": ["email"]}'::jsonb,
+  '{"name": "Super Administrateur", "role": "super_admin"}'::jsonb,
+  'authenticated',
+  'authenticated'
+),
+-- Bistro Gérant (gerant@bistropremium.ci / password: admin123)
+(
+  '11111111-1111-1111-1111-111111111111',
+  'gerant@bistropremium.ci',
+  crypt('admin123', gen_salt('bf')),
+  now(),
+  now(),
+  '{"provider": "email", "providers": ["email"]}'::jsonb,
+  '{"name": "Gérant Bistro", "role": "admin", "restaurant_id": "22222222-2222-2222-2222-222222222222"}'::jsonb,
+  'authenticated',
+  'authenticated'
+),
+-- Bistro Chef (chef@bistropremium.ci / password: chef123)
+(
+  '11111111-1111-1111-1111-111111111112',
+  'chef@bistropremium.ci',
+  crypt('chef123', gen_salt('bf')),
+  now(),
+  now(),
+  '{"provider": "email", "providers": ["email"]}'::jsonb,
+  '{"name": "Chef Amadou", "role": "cook", "restaurant_id": "22222222-2222-2222-2222-222222222222"}'::jsonb,
+  'authenticated',
+  'authenticated'
+),
+-- Bistro Serveur (serveur@bistropremium.ci / password: serveur123)
+(
+  '11111111-1111-1111-1111-111111111113',
+  'serveur@bistropremium.ci',
+  crypt('serveur123', gen_salt('bf')),
+  now(),
+  now(),
+  '{"provider": "email", "providers": ["email"]}'::jsonb,
+  '{"name": "Serveur Koffi", "role": "waiter", "restaurant_id": "22222222-2222-2222-2222-222222222222"}'::jsonb,
+  'authenticated',
+  'authenticated'
+),
+-- Cacao Gérant (gerant@maquiscacao.ci / password: admin123)
+(
+  '11111111-1111-1111-1111-222222222221',
+  'gerant@maquiscacao.ci',
+  crypt('admin123', gen_salt('bf')),
+  now(),
+  now(),
+  '{"provider": "email", "providers": ["email"]}'::jsonb,
+  '{"name": "Gérant Cacao", "role": "admin", "restaurant_id": "33333333-3333-3333-3333-333333333333"}'::jsonb,
+  'authenticated',
+  'authenticated'
+),
+-- Cacao Chef (chef@maquiscacao.ci / password: chef123)
+(
+  '11111111-1111-1111-1111-222222222222',
+  'chef@maquiscacao.ci',
+  crypt('chef123', gen_salt('bf')),
+  now(),
+  now(),
+  '{"provider": "email", "providers": ["email"]}'::jsonb,
+  '{"name": "Chef Awa", "role": "cook", "restaurant_id": "33333333-3333-3333-3333-333333333333"}'::jsonb,
+  'authenticated',
+  'authenticated'
+);
 
 -- 3. Tables actives par défaut
 insert into tables (id, restaurant_id, table_number) values
@@ -159,3 +272,24 @@ insert into menu_items (id, restaurant_id, name, description, price, category, i
 ('44444444-4444-4444-4444-888888888801', '33333333-3333-3333-3333-333333333333', 'Alloco & Brochettes', 'Alloco croustillant de Côte d''Ivoire, brochettes de bœuf épicées.', 6500, 'Plats', 'https://images.unsplash.com/photo-1544025162-d76694265947?w=400&h=300&fit=crop&q=80'),
 ('44444444-4444-4444-4444-888888888802', '33333333-3333-3333-3333-333333333333', 'Kedjenou de Poulet', 'Poulet mijoté à l''étouffée avec légumes, servi avec de l''attiéké.', 8000, 'Plats', 'https://images.unsplash.com/photo-1547592180-85f173990554?w=400&h=300&fit=crop&q=80'),
 ('44444444-4444-4444-4444-888888888803', '33333333-3333-3333-3333-333333333333', 'Bissap Glacé Maison', 'Jus de fleurs d''hibiscus infusées, menthe et arôme vanille.', 2000, 'Boissons', 'https://images.unsplash.com/photo-1536935338788-846bb9981813?w=400&h=300&fit=crop&q=80');
+
+-- 6. Activer le RLS et configurer les règles
+ALTER TABLE restaurants ENABLE ROW LEVEL SECURITY;
+ALTER TABLE restaurant_users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE platform_admins ENABLE ROW LEVEL SECURITY;
+ALTER TABLE tables ENABLE ROW LEVEL SECURITY;
+ALTER TABLE menu_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE orders ENABLE ROW LEVEL SECURITY;
+ALTER TABLE order_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE service_requests ENABLE ROW LEVEL SECURITY;
+
+-- Créer les politiques RLS permissives pour le MVP
+CREATE POLICY "Allow public read access to restaurants" ON restaurants FOR SELECT USING (true);
+CREATE POLICY "Allow public write access to restaurants" ON restaurants FOR ALL TO anon USING (true) WITH CHECK (true);
+CREATE POLICY "Allow public access to restaurant_users" ON restaurant_users FOR ALL TO anon USING (true) WITH CHECK (true);
+CREATE POLICY "Allow public access to platform_admins" ON platform_admins FOR ALL TO anon USING (true) WITH CHECK (true);
+CREATE POLICY "Allow public access to tables" ON tables FOR ALL TO anon USING (true) WITH CHECK (true);
+CREATE POLICY "Allow public access to menu_items" ON menu_items FOR ALL TO anon USING (true) WITH CHECK (true);
+CREATE POLICY "Allow public access to orders" ON orders FOR ALL TO anon USING (true) WITH CHECK (true);
+CREATE POLICY "Allow public access to order_items" ON order_items FOR ALL TO anon USING (true) WITH CHECK (true);
+CREATE POLICY "Allow public access to service_requests" ON service_requests FOR ALL TO anon USING (true) WITH CHECK (true);
