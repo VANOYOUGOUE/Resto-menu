@@ -11,6 +11,7 @@ drop table if exists order_items cascade;
 drop table if exists orders cascade;
 drop table if exists tables cascade;
 drop table if exists restaurant_users cascade;
+drop table if exists platform_admins cascade;
 drop table if exists menu_items cascade;
 drop table if exists restaurants cascade;
 
@@ -33,11 +34,21 @@ create table restaurant_users (
     name varchar(255) not null,
     email varchar(255) not null,
     password varchar(255) not null, -- Stocké en clair pour le prototype/MVP
-    role varchar(50) not null check (role in ('admin', 'cook', 'waiter', 'super_admin')),
+    role varchar(50) not null check (role in ('admin', 'cook', 'waiter')),
     created_at timestamp with time zone default timezone('utc'::text, now()),
     constraint unique_restaurant_email unique (restaurant_id, email)
 );
 create index idx_restaurant_users_email on restaurant_users(email);
+
+-- 2.5 Table des Administrateurs de la Plateforme (Super Admins)
+create table platform_admins (
+    id uuid primary key default uuid_generate_v4(),
+    name varchar(255) not null,
+    email varchar(255) not null unique,
+    password varchar(255) not null,
+    created_at timestamp with time zone default timezone('utc'::text, now())
+);
+create index idx_platform_admins_email on platform_admins(email);
 
 -- 3. Table des Tables de restaurant
 create table tables (
@@ -106,14 +117,11 @@ alter publication supabase_realtime add table service_requests;
 
 -- 1. Restaurants de démonstration
 insert into restaurants (id, name, slug, subscription_status, trial_ends_at, subscription_ends_at) values
-('11111111-1111-1111-1111-111111111110', 'Resto-menu Platform', 'resto-menu', 'active', now() + interval '365 days', now() + interval '365 days'),
 ('22222222-2222-2222-2222-222222222222', 'Bistro Premium', 'bistro-premium', 'active', now() + interval '7 days', now() + interval '15 days'),
 ('33333333-3333-3333-3333-333333333333', 'Maquis Cacao', 'maquis-cacao', 'trialing', now() + interval '5 days', null);
 
 -- 2. Comptes d'accès pour les gérants et employés
 insert into restaurant_users (id, restaurant_id, name, email, password, role) values
--- Platform Super Admin
-('00000000-0000-0000-0000-000000000000', '11111111-1111-1111-1111-111111111110', 'Super Administrateur', 'superadmin@restomenu.ci', 'super123', 'super_admin'),
 -- Bistro Premium
 ('11111111-1111-1111-1111-111111111111', '22222222-2222-2222-2222-222222222222', 'Gérant Bistro', 'gerant@bistropremium.ci', 'admin123', 'admin'),
 ('11111111-1111-1111-1111-111111111112', '22222222-2222-2222-2222-222222222222', 'Chef Amadou', 'chef@bistropremium.ci', 'chef123', 'cook'),
@@ -121,6 +129,10 @@ insert into restaurant_users (id, restaurant_id, name, email, password, role) va
 -- Maquis Cacao
 ('11111111-1111-1111-1111-222222222221', '33333333-3333-3333-3333-333333333333', 'Gérant Cacao', 'gerant@maquiscacao.ci', 'admin123', 'admin'),
 ('11111111-1111-1111-1111-222222222222', '33333333-3333-3333-3333-333333333333', 'Chef Awa', 'chef@maquiscacao.ci', 'chef123', 'cook');
+
+-- 2.5 Comptes d'accès pour les Administrateurs de la Plateforme (Super Admin)
+insert into platform_admins (id, name, email, password) values
+('00000000-0000-0000-0000-000000000000', 'Super Administrateur', 'superadmin@restomenu.ci', 'super123');
 
 -- 3. Tables actives par défaut
 insert into tables (id, restaurant_id, table_number) values

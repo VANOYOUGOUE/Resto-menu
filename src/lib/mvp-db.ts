@@ -15,9 +15,18 @@ export interface RestaurantUser {
   restaurant_id: string;
   name: string;
   email: string;
-  role: 'admin' | 'cook' | 'waiter' | 'super_admin';
+  role: 'admin' | 'cook' | 'waiter';
   password?: string;
   created_at?: string;
+}
+
+export interface PlatformAdmin {
+  id: string;
+  name: string;
+  email: string;
+  role: 'super_admin';
+  created_at?: string;
+  password?: string;
 }
 
 export interface MenuItem {
@@ -67,14 +76,6 @@ export interface AdminTable {
 // Mock Restaurants
 const MOCK_RESTAURANTS: Restaurant[] = [
   { 
-    id: '11111111-1111-1111-1111-111111111110', 
-    name: 'Resto-menu Platform', 
-    slug: 'resto-menu', 
-    subscription_status: 'active',
-    trial_ends_at: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
-    subscription_ends_at: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString()
-  },
-  { 
     id: '22222222-2222-2222-2222-222222222222', 
     name: 'Bistro Premium', 
     slug: 'bistro-premium',
@@ -92,10 +93,13 @@ const MOCK_RESTAURANTS: Restaurant[] = [
   }
 ];
 
+// Mock Platform Admins
+const MOCK_PLATFORM_ADMINS: PlatformAdmin[] = [
+  { id: '00000000-0000-0000-0000-000000000000', name: 'Super Administrateur', email: 'superadmin@restomenu.ci', role: 'super_admin', password: 'super123' }
+];
+
 // Mock Users
 const MOCK_RESTAURANT_USERS: RestaurantUser[] = [
-  // Platform Super Admin
-  { id: '00000000-0000-0000-0000-000000000000', restaurant_id: '11111111-1111-1111-1111-111111111110', name: 'Super Administrateur', email: 'superadmin@restomenu.ci', role: 'super_admin', password: 'super123' },
   // Bistro Premium
   { id: '11111111-1111-1111-1111-111111111111', restaurant_id: '22222222-2222-2222-2222-222222222222', name: 'Gérant Bistro', email: 'gerant@bistropremium.ci', role: 'admin', password: 'admin123' },
   { id: '11111111-1111-1111-1111-111111111112', restaurant_id: '22222222-2222-2222-2222-222222222222', name: 'Chef Amadou', email: 'chef@bistropremium.ci', role: 'cook', password: 'chef123' },
@@ -267,7 +271,7 @@ export const loginMVPUser = async (
   restaurantSlug: string,
   email: string,
   password: string
-): Promise<{ user: RestaurantUser; restaurant: Restaurant } | null> => {
+): Promise<{ user: RestaurantUser | PlatformAdmin; restaurant: Restaurant | null } | null> => {
   const normalizedEmail = email.trim().toLowerCase();
 
   if (isSupabaseConfigured && supabase) {
@@ -277,11 +281,10 @@ export const loginMVPUser = async (
     if (!restaurantSlug) {
       // Login attempt without slug (Super Admin check)
       const { data: user, error: userErr } = await supabase
-        .from('restaurant_users')
+        .from('platform_admins')
         .select('*')
         .eq('email', normalizedEmail)
         .eq('password', password)
-        .eq('role', 'super_admin')
         .single();
 
       if (userErr || !user) {
@@ -290,21 +293,8 @@ export const loginMVPUser = async (
         }
         return null;
       }
-      targetUser = user;
-
-      const { data: restaurant, error: restErr } = await supabase
-        .from('restaurants')
-        .select('*')
-        .eq('id', user.restaurant_id)
-        .single();
-
-      if (restErr || !restaurant) {
-        if (restErr && restErr.code !== 'PGRST116') {
-          console.error('Super Admin restaurant database error:', restErr);
-        }
-        return null;
-      }
-      finalRestaurant = restaurant;
+      targetUser = { ...user, role: 'super_admin' as const };
+      finalRestaurant = null;
     } else {
       // Normal login with slug
       const { data: restaurant, error: restErr } = await supabase
@@ -351,19 +341,14 @@ export const loginMVPUser = async (
   let targetUser = null;
 
   if (!restaurantSlug) {
-    const users = getLocalData<RestaurantUser[]>('mvp_restaurant_users', MOCK_RESTAURANT_USERS);
+    const users = getLocalData<PlatformAdmin[]>('mvp_platform_admins', MOCK_PLATFORM_ADMINS);
     const user = users.find(
       u => u.email.toLowerCase() === normalizedEmail && 
-      u.password === password && 
-      u.role === 'super_admin'
+      u.password === password
     );
     if (!user) return null;
-    targetUser = user;
-
-    const restaurants = getLocalData<Restaurant[]>('mvp_restaurants', MOCK_RESTAURANTS);
-    const restaurant = restaurants.find(r => r.id === user.restaurant_id);
-    if (!restaurant) return null;
-    finalRestaurant = restaurant;
+    targetUser = { ...user, role: 'super_admin' as const };
+    finalRestaurant = null;
   } else {
     const restaurants = getLocalData<Restaurant[]>('mvp_restaurants', MOCK_RESTAURANTS);
     const restaurant = restaurants.find(r => r.slug === restaurantSlug);
@@ -399,7 +384,7 @@ export const getCurrentSession = (): { user: RestaurantUser; restaurant: Restaur
   }
 };
 
-export const getSuperAdminSession = (): { user: RestaurantUser; restaurant: Restaurant } | null => {
+export const getSuperAdminSession = (): { user: PlatformAdmin; restaurant: Restaurant | null } | null => {
   if (typeof window === 'undefined') return null;
   try {
     const session = window.sessionStorage.getItem('super_resto_session');
