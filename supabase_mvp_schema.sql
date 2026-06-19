@@ -285,11 +285,12 @@ ALTER TABLE service_requests ENABLE ROW LEVEL SECURITY;
 
 -- Créer les politiques RLS permissives pour le MVP
 CREATE POLICY "Allow public read access to restaurants" ON restaurants FOR SELECT USING (true);
-CREATE POLICY "Allow public write access to restaurants" ON restaurants FOR ALL TO anon USING (true) WITH CHECK (true);
-CREATE POLICY "Allow public access to restaurant_users" ON restaurant_users FOR ALL TO anon USING (true) WITH CHECK (true);
-CREATE POLICY "Allow public access to platform_admins" ON platform_admins FOR ALL TO anon USING (true) WITH CHECK (true);
-CREATE POLICY "Allow public access to tables" ON tables FOR ALL TO anon USING (true) WITH CHECK (true);
-CREATE POLICY "Allow public access to menu_items" ON menu_items FOR ALL TO anon USING (true) WITH CHECK (true);
-CREATE POLICY "Allow public access to orders" ON orders FOR ALL TO anon USING (true) WITH CHECK (true);
-CREATE POLICY "Allow public access to order_items" ON order_items FOR ALL TO anon USING (true) WITH CHECK (true);
-CREATE POLICY "Allow public access to service_requests" ON service_requests FOR ALL TO anon USING (true) WITH CHECK (true);
+CREATE POLICY "Allow public write access to restaurants" ON restaurants FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow public access to restaurant_users" ON restaurant_users FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow public access to platform_admins" ON platform_admins FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow public access to tables" ON tables FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow public access to menu_items" ON menu_items FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow public access to orders" ON orders FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow public access to order_items" ON order_items FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow public access to service_requests" ON service_requests FOR ALL USING (true) WITH CHECK (true);
+
