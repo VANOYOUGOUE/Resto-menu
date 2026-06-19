@@ -1344,3 +1344,50 @@ export const updateMVPRestaurantSubscription = async (
   }
   return false;
 };
+
+export const updateMVPUserPassword = async (newPassword: string): Promise<boolean> => {
+  if (isSupabaseConfigured && supabase) {
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    if (error) throw error;
+    return true;
+  }
+
+  // Local storage / mock update fallback
+  if (typeof window === 'undefined') return true;
+  try {
+    const superSessionStr = window.sessionStorage.getItem('super_resto_session');
+    const standardSessionStr = window.sessionStorage.getItem('resto_session');
+
+    if (superSessionStr) {
+      const session = JSON.parse(superSessionStr);
+      const email = session.user.email;
+      const admins = getLocalData<PlatformAdmin[]>('mvp_platform_admins', MOCK_PLATFORM_ADMINS);
+      const idx = admins.findIndex(a => a.email.toLowerCase() === email.toLowerCase());
+      if (idx !== -1) {
+        admins[idx].password = newPassword;
+        setLocalData('mvp_platform_admins', admins);
+        session.user.password = newPassword;
+        window.sessionStorage.setItem('super_resto_session', JSON.stringify(session));
+        return true;
+      }
+    }
+
+    if (standardSessionStr) {
+      const session = JSON.parse(standardSessionStr);
+      const email = session.user.email;
+      const users = getLocalData<RestaurantUser[]>('mvp_restaurant_users', MOCK_RESTAURANT_USERS);
+      const idx = users.findIndex(u => u.email.toLowerCase() === email.toLowerCase());
+      if (idx !== -1) {
+        users[idx].password = newPassword;
+        setLocalData('mvp_restaurant_users', users);
+        session.user.password = newPassword;
+        window.sessionStorage.setItem('resto_session', JSON.stringify(session));
+        return true;
+      }
+    }
+  } catch (e) {
+    console.error('Error updating mock password:', e);
+  }
+  return false;
+};
+

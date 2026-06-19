@@ -20,7 +20,8 @@ import {
   Mail,
   MapPin,
   ShieldCheck,
-  Users
+  Users,
+  Lock
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { 
@@ -28,7 +29,8 @@ import {
   getCurrentSession, 
   logoutMVPUser,
   getMVPRestaurantById,
-  isRestaurantSubscriptionValid
+  isRestaurantSubscriptionValid,
+  updateMVPUserPassword
 } from '@/lib/mvp-db';
 
 export default function AdminLayout({
@@ -51,6 +53,37 @@ export default function AdminLayout({
   const [subExpDate, setSubExpDate] = useState('18 Juillet 2026');
   const [renewing, setRenewing] = useState(false);
   const [renewed, setRenewed] = useState(false);
+
+  // Password update states
+  const [newPassword, setNewPassword] = useState('');
+  const [updatingPassword, setUpdatingPassword] = useState(false);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [passwordSuccess, setPasswordSuccess] = useState(false);
+
+  const handlePasswordUpdate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newPassword.length < 6) {
+      setPasswordError("Le mot de passe doit contenir au moins 6 caractères.");
+      return;
+    }
+    setUpdatingPassword(true);
+    setPasswordError(null);
+    setPasswordSuccess(false);
+    try {
+      const success = await updateMVPUserPassword(newPassword);
+      if (success) {
+        setPasswordSuccess(true);
+        setNewPassword('');
+        setTimeout(() => setPasswordSuccess(false), 3000);
+      } else {
+        setPasswordError("Échec de la mise à jour.");
+      }
+    } catch (err: any) {
+      setPasswordError(err.message || "Une erreur est survenue.");
+    } finally {
+      setUpdatingPassword(false);
+    }
+  };
 
   // Route Guard checking
   useEffect(() => {
@@ -322,6 +355,47 @@ export default function AdminLayout({
                     </div>
                   </div>
                 </div>
+              </div>
+
+              {/* Security: Update Password */}
+              <div className="flex flex-col gap-3 animate-fade-in">
+                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Sécurité</span>
+                <form onSubmit={handlePasswordUpdate} className="p-4 rounded-2xl bg-slate-950/40 border border-slate-850 flex flex-col gap-3">
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-[9px] text-slate-500 font-bold uppercase tracking-wider">Nouveau mot de passe</label>
+                    <div className="relative">
+                      <Lock size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-655" />
+                      <input 
+                        type="password"
+                        required
+                        placeholder="••••••••"
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        className="w-full pl-9 pr-4 py-2 bg-slate-950/80 border border-slate-850 rounded-xl text-slate-100 placeholder-slate-700 focus:outline-none focus:border-amber-500 text-xs transition-colors"
+                        disabled={updatingPassword}
+                      />
+                    </div>
+                  </div>
+
+                  {passwordError && (
+                    <span className="text-[10px] text-red-400 font-semibold">{passwordError}</span>
+                  )}
+                  {passwordSuccess && (
+                    <span className="text-[10px] text-emerald-400 font-semibold">Mot de passe mis à jour !</span>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={updatingPassword}
+                    className="w-full py-2 bg-slate-800 hover:bg-slate-750 disabled:bg-slate-900 text-slate-200 hover:text-white font-bold text-xs uppercase tracking-wide rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                  >
+                    {updatingPassword ? (
+                      <RefreshCw size={12} className="animate-spin text-slate-200" />
+                    ) : (
+                      <span>Enregistrer</span>
+                    )}
+                  </button>
+                </form>
               </div>
 
               {/* Subscription Card */}

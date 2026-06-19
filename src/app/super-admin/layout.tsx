@@ -10,9 +10,13 @@ import {
   LogOut,
   User,
   Menu,
-  X
+  X,
+  Mail,
+  ShieldCheck,
+  RefreshCw,
+  Lock
 } from 'lucide-react';
-import { getSuperAdminSession, logoutSuperAdmin } from '@/lib/mvp-db';
+import { getSuperAdminSession, logoutSuperAdmin, updateMVPUserPassword } from '@/lib/mvp-db';
 
 export default function SuperAdminLayout({
   children,
@@ -25,6 +29,38 @@ export default function SuperAdminLayout({
   const [session, setSession] = useState<{ user: any; restaurant: any } | null>(null);
   const [loadingSession, setLoadingSession] = useState(true);
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  // Password & Profile Modal states
+  const [profileModalOpen, setProfileModalOpen] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [updatingPassword, setUpdatingPassword] = useState(false);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [passwordSuccess, setPasswordSuccess] = useState(false);
+
+  const handlePasswordUpdate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newPassword.length < 6) {
+      setPasswordError("Le mot de passe doit contenir au moins 6 caractères.");
+      return;
+    }
+    setUpdatingPassword(true);
+    setPasswordError(null);
+    setPasswordSuccess(false);
+    try {
+      const success = await updateMVPUserPassword(newPassword);
+      if (success) {
+        setPasswordSuccess(true);
+        setNewPassword('');
+        setTimeout(() => setPasswordSuccess(false), 3000);
+      } else {
+        setPasswordError("Échec de la mise à jour.");
+      }
+    } catch (err: any) {
+      setPasswordError(err.message || "Une erreur est survenue.");
+    } finally {
+      setUpdatingPassword(false);
+    }
+  };
 
   useEffect(() => {
     if (pathname === '/super-admin/login') {
@@ -147,15 +183,21 @@ export default function SuperAdminLayout({
 
         {/* Sidebar Footer User Info & Exit */}
         <div className="flex flex-col gap-3 border-t border-slate-900/60 pt-4">
-          <div className="flex items-center gap-3 p-2.5 rounded-2xl bg-slate-950 border border-slate-900 text-left">
-            <div className="w-9 h-9 rounded-full bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-400 shrink-0">
-              <User size={16} />
+          <button
+            onClick={() => setProfileModalOpen(true)}
+            className="flex items-center justify-between w-full p-2.5 rounded-2xl bg-slate-950 border border-slate-900 hover:border-slate-800 transition-all text-left cursor-pointer group hover:bg-slate-900/40"
+            title="Mon Profil"
+          >
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-9 h-9 rounded-full bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-400 group-hover:text-amber-500 transition-colors shrink-0">
+                <User size={16} />
+              </div>
+              <div className="min-w-0">
+                <span className="text-xs font-bold text-slate-200 block truncate">{userName}</span>
+                <span className="text-[8px] text-amber-500 font-black block uppercase tracking-wider animate-pulse">Super Admin</span>
+              </div>
             </div>
-            <div className="min-w-0">
-              <span className="text-xs font-bold text-slate-200 block truncate">{userName}</span>
-              <span className="text-[8px] text-amber-500 font-black block uppercase tracking-wider">Super Admin</span>
-            </div>
-          </div>
+          </button>
           
           <button
             onClick={handleLogout}
@@ -181,6 +223,112 @@ export default function SuperAdminLayout({
           {children}
         </div>
       </main>
+
+      {/* Profile Modal overlay */}
+      {profileModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4">
+          <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-[2.5rem] overflow-hidden shadow-2xl animate-slide-up flex flex-col max-h-[90vh]">
+            
+            {/* Modal Header */}
+            <div className="p-6 border-b border-slate-850 flex justify-between items-center bg-slate-950/20 backdrop-blur-md">
+              <h2 className="text-sm font-extrabold text-white uppercase tracking-wider flex items-center gap-2">
+                <ShieldCheck size={18} className="text-amber-500" />
+                <span>Mon Espace Super Admin</span>
+              </h2>
+              <button
+                onClick={() => setProfileModalOpen(false)}
+                className="w-9 h-9 rounded-2xl bg-slate-850 hover:bg-slate-800 flex items-center justify-center text-slate-400 hover:text-white transition-colors"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 overflow-y-auto flex flex-col gap-6">
+              
+              {/* Profile Details */}
+              <div className="flex flex-col gap-3">
+                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Informations du Profil</span>
+                <div className="p-4 rounded-2xl bg-slate-950/40 border border-slate-850 flex flex-col gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-slate-900 border border-slate-800 flex items-center justify-center text-amber-500">
+                      <User size={18} />
+                    </div>
+                    <div>
+                      <span className="text-sm font-bold text-white block">{userName}</span>
+                      <span className="text-[10px] text-slate-500 font-mono block">Rôle : Super Administrateur</span>
+                    </div>
+                  </div>
+                  
+                  <div className="h-px bg-slate-900 my-1"></div>
+                  
+                  <div className="flex flex-col gap-2">
+                    <div className="flex items-center gap-2 text-xs text-slate-400">
+                      <Mail size={13} className="text-slate-500" />
+                      <span>{session?.user?.email || 'superadmin@restomenu.ci'}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Security: Update Password */}
+              <div className="flex flex-col gap-3">
+                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Sécurité</span>
+                <form onSubmit={handlePasswordUpdate} className="p-4 rounded-2xl bg-slate-950/40 border border-slate-850 flex flex-col gap-3">
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-[9px] text-slate-500 font-bold uppercase tracking-wider">Nouveau mot de passe</label>
+                    <div className="relative">
+                      <Lock size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-655" />
+                      <input 
+                        type="password"
+                        required
+                        placeholder="••••••••"
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        className="w-full pl-9 pr-4 py-2 bg-slate-950/80 border border-slate-850 rounded-xl text-slate-100 placeholder-slate-700 focus:outline-none focus:border-amber-500 text-xs transition-colors"
+                        disabled={updatingPassword}
+                      />
+                    </div>
+                  </div>
+
+                  {passwordError && (
+                    <span className="text-[10px] text-red-400 font-semibold">{passwordError}</span>
+                  )}
+                  {passwordSuccess && (
+                    <span className="text-[10px] text-emerald-400 font-semibold">Mot de passe mis à jour !</span>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={updatingPassword}
+                    className="w-full py-2 bg-slate-800 hover:bg-slate-750 disabled:bg-slate-900 text-slate-200 hover:text-white font-bold text-xs uppercase tracking-wide rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                  >
+                    {updatingPassword ? (
+                      <RefreshCw size={12} className="animate-spin text-slate-200" />
+                    ) : (
+                      <span>Enregistrer</span>
+                    )}
+                  </button>
+                </form>
+              </div>
+
+              {/* Logout Button */}
+              <div className="flex gap-3 mt-2">
+                <button
+                  onClick={handleLogout}
+                  className="w-full py-3.5 rounded-xl border border-red-500/20 bg-red-500/5 hover:bg-red-500/10 text-red-400 font-bold text-xs uppercase tracking-wider tap-feedback cursor-pointer transition-all flex items-center justify-center gap-2"
+                >
+                  <LogOut size={14} />
+                  <span>Déconnexion</span>
+                </button>
+              </div>
+
+            </div>
+
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+
